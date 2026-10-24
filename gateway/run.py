@@ -4873,7 +4873,10 @@ def _start_gateway_make_restart_signal_handler(runner):
             "SIGUSR1 received (systemctl reload / hermes gateway restart): performing a graceful "
             "gateway restart — drain active turns, exit, supervisor relaunches. Not an in-process "
             "config reload.")
-        runner.request_restart(detached=False, via_service=True)
+        # A Python signal handler receives no sender pid; the sender is recorded as unknown (see PR).
+        runner.request_restart(
+            detached=False, via_service=True, actor="signal:SIGUSR1",
+            reason="systemctl reload / hermes gateway restart (sender pid not recorded)")
     return restart_signal_handler
 
 

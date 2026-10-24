@@ -170,6 +170,15 @@ def _effective_watchdog_leash(runner: object) -> float:
     return effective_stop_watchdog_delay(runner, resolve_shutdown_watchdog_delay(effective_stop_drain_timeout(runner)))
 
 
+def _restart_attr(value, name: str, *, optional: bool = False):
+    """Validate one restart attribution field. Whitespace (incl. newlines) is collapsed so each request is one log line."""
+    if value is None and optional:
+        return None
+    if not isinstance(value, str) or not value.strip():
+        raise ValueError(f"request_restart requires a non-empty {name}")
+    return " ".join(value.split())
+
+
 class GatewayShutdownMixin(GatewaySessionEndMixin):
     """Stop/drain/restart, scale-to-zero and active-work accounting methods for GatewayRunner."""
 
@@ -1608,6 +1617,11 @@ class GatewayShutdownMixin(GatewaySessionEndMixin):
             units.extend({"kind": kind, "pid": os.getpid()} for _ in range(count))
         return units
 
+    def _restart_attribution_text(self) -> str:
+        return "actor=%s reason=%s review_ref=%s" % (
+            getattr(self, "_restart_actor", "<unset>"), getattr(self, "_restart_reason", "<unset>"),
+            getattr(self, "_restart_review_ref", None) or "none")
+
     async def _await_active_work_before_restart(self) -> bool:
         """Wait for in-flight work before ``stop()`` so the requesting turn isn't force-interrupted.
 
@@ -1622,21 +1636,22 @@ class GatewayShutdownMixin(GatewaySessionEndMixin):
                 "Restart requested with %d active work unit(s), none awaitable "
                 "(%d wedged past the inactivity timeout, %d in restart-safe external cron "
                 "workers that outlive this process); skipping the after-turn wait and "
-                "proceeding to stop()/drain", active,
-                self._wedged_agent_count(), self._restart_safe_cron_count(),
+                "proceeding to stop()/drain [%s]", active,
+                self._wedged_agent_count(), self._restart_safe_cron_count(), self._restart_attribution_text(),
             )
             return False
         timeout = float(getattr(self, "_restart_after_turn_timeout", 0.0) or 0.0)
         if timeout <= 0:
             logger.info(
                 "Restart requested with %d active work unit(s); "
-                "restart_after_turn_timeout=0 — entering stop()/drain immediately", active,
+                "restart_after_turn_timeout=0 — entering stop()/drain immediately [%s]", active,
+                self._restart_attribution_text(),
             )
             return False
         logger.info(
             "Restart requested with %d active work unit(s); "
             "deferring stop() until they finish (cap=%.0fs) so in-flight "
-            "turns are not amputated (#77184)", active, timeout,
+            "turns are not amputated (#77184) [%s]", active, timeout, self._restart_attribution_text(),
         )
         self._scale_to_zero_status("draining", "restart wait: status mark failed")
         loop = asyncio.get_running_loop()
@@ -1674,9 +1689,25 @@ class GatewayShutdownMixin(GatewaySessionEndMixin):
         logger.info("Restart deferred wait complete — active work drained; proceeding to stop()")
         return True
 
-    def request_restart(self, *, detached: bool = False, via_service: bool = False) -> bool:
+    def request_restart(self, *, actor: str, reason: str, review_ref: str | None = None,
+                        detached: bool = False, via_service: bool = False) -> bool:
+        """Request a graceful restart. ``actor`` and ``reason`` are required so every restart is attributable.
+
+        Logs the attribution on each request and emits one ``restart_requested`` audit line (ops alert:
+        ``review_ref=none``).
+        """
+        actor = _restart_attr(actor, "actor")
+        reason = _restart_attr(reason, "reason")
+        review_ref = _restart_attr(review_ref, "review_ref", optional=True)
         if self._restart_task_started:
+            logger.info("Restart request ignored, a restart is already in progress: actor=%s reason=%s review_ref=%s",
+                        actor, reason, review_ref or "none")
             return False
+        self._restart_actor = actor
+        self._restart_reason = reason
+        self._restart_review_ref = review_ref
+        logger.info("restart_requested actor=%s reason=%s review_ref=%s via_service=%s detached=%s",
+                    actor, reason, review_ref or "none", via_service, detached)
         self._restart_requested = True
         self._restart_detached = detached
         self._restart_via_service = via_service

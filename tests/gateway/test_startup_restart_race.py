@@ -136,7 +136,7 @@ async def test_startup_aborts_when_restart_begins_during_platform_connect(tmp_pa
     first_disconnected = asyncio.Event()
     telegram = StartupRaceAdapter(
         Platform.TELEGRAM,
-        on_connect=lambda: runner.request_restart(detached=False, via_service=True),
+        on_connect=lambda: runner.request_restart(detached=False, via_service=True, actor="test", reason="test"),
     )
     slack = StartupRaceAdapter(Platform.SLACK, wait_for_disconnect=first_disconnected)
 

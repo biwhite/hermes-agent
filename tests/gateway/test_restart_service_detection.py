@@ -62,7 +62,8 @@ async def test_restart_with_external_supervisor_marker_uses_service_path(
 
     await runner._handle_restart_command(_make_restart_event())
 
-    runner.request_restart.assert_called_once_with(detached=False, via_service=True)
+    runner.request_restart.assert_called_once_with(
+        detached=False, via_service=True, actor="chat:telegram:u1", reason="/restart chat command")
 
 
 @pytest.mark.asyncio
@@ -75,7 +76,8 @@ async def test_false_external_supervisor_marker_keeps_detached_path(
 
     await runner._handle_restart_command(_make_restart_event())
 
-    runner.request_restart.assert_called_once_with(detached=True, via_service=False)
+    runner.request_restart.assert_called_once_with(
+        detached=True, via_service=False, actor="chat:telegram:u1", reason="/restart chat command")
 
 
 def test_supervised_child_marker_is_a_launch_not_a_restart_route():
