@@ -587,7 +587,9 @@ class GatewaySlashCommandsMixin(
         # the cgroup; tini exits with the gateway). The explicit marker covers ``sudo env -i`` wrappers.
         from gateway.restart import is_container_restart_context, is_gateway_supervisor_process
         via_service = is_gateway_supervisor_process() or is_container_restart_context()
-        self.request_restart(detached=not via_service, via_service=via_service)
+        actor = f"chat:{event.source.platform.value}:{event.source.user_id or 'unknown'}"
+        self.request_restart(detached=not via_service, via_service=via_service,
+                             actor=actor, reason="/restart chat command")
         # Track sessions that were active at shutdown for stuck-loop detection (#7536). On each restart, the
         # counter increments for sessions that were running. If a session hits the threshold (3 consecutive
         # restarts while active), the next startup auto-suspends it — breaking the loop.

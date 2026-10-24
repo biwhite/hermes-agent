@@ -55,7 +55,8 @@ async def test_restart_command_while_busy_requests_drain_without_interrupt(monke
     assert expected != "gateway.draining"
     assert "Draining" in expected and "1" in expected
     running_agent.interrupt.assert_not_called()
-    runner.request_restart.assert_called_once_with(detached=True, via_service=False)
+    runner.request_restart.assert_called_once_with(
+        detached=True, via_service=False, actor="chat:telegram:u1", reason="/restart chat command")
 
 
 def test_load_busy_text_mode_follows_input_mode_and_honors_legacy(tmp_path, monkeypatch):
@@ -141,10 +142,10 @@ async def test_request_restart_is_idempotent():
     # _run_restart is held on self._restart_task and is intentionally NOT in
     # _background_tasks, so _stop_impl's cancel loop can't abort it mid-await
     # (see #12875).
-    assert runner.request_restart(detached=True, via_service=False) is True
+    assert runner.request_restart(detached=True, via_service=False, actor="test", reason="test") is True
     assert runner._restart_task is not None
     assert runner._restart_task not in runner._background_tasks
-    assert runner.request_restart(detached=True, via_service=False) is False
+    assert runner.request_restart(detached=True, via_service=False, actor="test", reason="test") is False
     # In-band restart marks draining immediately so new turns are refused
     # while any after-turn wait runs (#77184).
     assert runner._draining is True
@@ -167,7 +168,7 @@ async def test_request_restart_defers_stop_until_active_turn_finishes():
     session_key = "agent:main:telegram:dm:123"
     runner._running_agents[session_key] = MagicMock()
 
-    assert runner.request_restart(detached=False, via_service=True) is True
+    assert runner.request_restart(detached=False, via_service=True, actor="test", reason="test") is True
     assert runner._draining is True
 
     # While the requesting turn is still active, stop() must not run.
@@ -194,7 +195,7 @@ async def test_request_restart_after_turn_timeout_zero_enters_stop_immediately()
     runner._restart_after_turn_timeout = 0.0
     runner._running_agents["agent:main:telegram:dm:1"] = MagicMock()
 
-    assert runner.request_restart(detached=False, via_service=True) is True
+    assert runner.request_restart(detached=False, via_service=True, actor="test", reason="test") is True
     await runner._restart_task
 
     runner.stop.assert_awaited_once_with(
@@ -210,7 +211,7 @@ async def test_request_restart_after_turn_cap_elapsed_still_calls_stop():
     runner._restart_after_turn_timeout = 0.2
     runner._running_agents["agent:main:telegram:dm:1"] = MagicMock()
 
-    assert runner.request_restart(detached=False, via_service=True) is True
+    assert runner.request_restart(detached=False, via_service=True, actor="test", reason="test") is True
     await runner._restart_task
 
     runner.stop.assert_awaited_once_with(
@@ -239,7 +240,7 @@ async def test_run_restart_excluded_from_stop_cancel_loop():
     runner._background_tasks.add(decoy)
     decoy.add_done_callback(runner._background_tasks.discard)
 
-    assert runner.request_restart(detached=False, via_service=True) is True
+    assert runner.request_restart(detached=False, via_service=True, actor="test", reason="test") is True
     restart_task = runner._restart_task
     assert restart_task is not None
     assert restart_task not in runner._background_tasks
@@ -293,7 +294,7 @@ async def test_restart_from_served_profile_chat_restarts_the_host_gateway(monkey
 
     async with gateway_run._async_profile_runtime_scope(profile_home):
         assert get_hermes_home() == profile_home
-        assert runner.request_restart(detached=True, via_service=False) is True
+        assert runner.request_restart(detached=True, via_service=False, actor="test", reason="test") is True
     await runner._restart_task
 
     assert [env.get("HERMES_HOME") for env in watcher_envs] == [str(launch_home)]
@@ -489,7 +490,7 @@ async def test_request_restart_skips_wait_when_only_wedged_turns(monkeypatch):
     runner._restart_after_turn_timeout = 300.0
     runner._running_agents["agent:main:whatsapp:dm:1"] = _wedged_agent()
 
-    assert runner.request_restart(detached=False, via_service=True) is True
+    assert runner.request_restart(detached=False, via_service=True, actor="test", reason="test") is True
     await asyncio.wait_for(runner._restart_task, timeout=5.0)
 
     runner.stop.assert_awaited_once_with(
@@ -511,7 +512,7 @@ async def test_request_restart_still_waits_for_live_turn_alongside_wedged(monkey
     runner._running_agents["agent:main:whatsapp:dm:1"] = _wedged_agent()
     runner._running_agents[live_key] = _live_agent()
 
-    assert runner.request_restart(detached=False, via_service=True) is True
+    assert runner.request_restart(detached=False, via_service=True, actor="test", reason="test") is True
 
     # Live turn active → stop() must not run yet, wedged turn notwithstanding.
     await asyncio.sleep(0.25)
@@ -573,7 +574,7 @@ async def test_request_restart_skips_wait_for_cron_run_past_inflight_allowance(m
         cron_units = [u for u in runner._describe_active_work() if u["kind"] == "cron"]
         assert cron_units[0]["job_id"] == "hung-delivery-job" and cron_units[0]["wedged"] is True
 
-        assert runner.request_restart(detached=False, via_service=True) is True
+        assert runner.request_restart(detached=False, via_service=True, actor="test", reason="test") is True
         await asyncio.wait_for(runner._restart_task, timeout=5.0)
         runner.stop.assert_awaited_once()
     finally:
@@ -653,7 +654,7 @@ async def test_request_restart_skips_wait_for_scope_isolated_cron_worker(monkeyp
         assert cron_units[0]["job_id"] == "scoped-screening-job"
         assert cron_units[0]["external"] is True and cron_units[0]["restart_safe"] is True
 
-        assert runner.request_restart(detached=False, via_service=True) is True
+        assert runner.request_restart(detached=False, via_service=True, actor="test", reason="test") is True
         await asyncio.wait_for(runner._restart_task, timeout=5.0)
         runner.stop.assert_awaited_once()
     finally:

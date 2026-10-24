@@ -307,7 +307,9 @@ async def _start_gateway_start_control_socket(runner):
 
             def _request() -> None:
                 try:
-                    accepted_box.append(runner.request_restart(detached=False, via_service=True))
+                    accepted_box.append(runner.request_restart(
+                        detached=False, via_service=True, actor="control-socket:pause-for-update",
+                        reason="updater pause-for-update request (client identity not verified)"))
                 finally:
                     _done.set()
 
