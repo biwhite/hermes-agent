@@ -46,8 +46,8 @@ class _AbortedStartupRunner:
         self.session_store.close_all_db_handles()
         self._session_db.close()
 
-    def request_restart(self, *, detached=False, via_service=False):
-        self.restart_calls.append({"detached": detached, "via_service": via_service})
+    def request_restart(self, *, actor, reason, review_ref=None, detached=False, via_service=False):
+        self.restart_calls.append({"detached": detached, "via_service": via_service, "actor": actor, "reason": reason})
         return True
 
 
@@ -84,4 +84,4 @@ async def test_sigusr1_handler_installed_by_start_gateway_logs_graceful_restart(
     with caplog.at_level(logging.INFO, logger="gateway.run"):
         handler(*args)
 
-    assert runners[0].restart_calls == [{"detached": False, "via_service": True}]
+    assert runners[0].restart_calls == [{"detached": False, "via_service": True, "actor": "signal:SIGUSR1", "reason": "systemctl reload / hermes gateway restart (sender pid not recorded)"}]
